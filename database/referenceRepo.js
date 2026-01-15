@@ -1,39 +1,26 @@
-import db from './db';
+import { db } from './db';
 
-export const getReference = () => {
+export const getAllReferences = () => {
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       tx.executeSql(
-        'SELECT * FROM reference',
+        'SELECT * FROM references',
         [],
-        (_, result) => resolve(result.rows._array),
-        (_, error) => reject(error)
+        (_, { rows }) => resolve(rows._array),
+        (_, err) => reject(err)
       );
     });
   });
 };
 
-export const addReferenceItem = (name, alphaBeta) => {
+export const insertReference = ({ tissue, alphaBeta }) => {
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       tx.executeSql(
-        'INSERT INTO reference (name, alpha_beta) VALUES (?, ?)',
-        [name, alphaBeta],
+        'INSERT INTO references (tissue, alphaBeta) VALUES (?, ?)',
+        [tissue, alphaBeta],
         (_, result) => resolve(result),
-        (_, error) => reject(error)
-      );
-    });
-  });
-};
-
-export const updateReferenceItem = (id, name, alphaBeta) => {
-  return new Promise((resolve, reject) => {
-    db.transaction(tx => {
-      tx.executeSql(
-        'UPDATE reference SET name = ?, alpha_beta = ? WHERE id = ?',
-        [name, alphaBeta, id],
-        (_, result) => resolve(result),
-        (_, error) => reject(error)
+        (_, err) => reject(err)
       );
     });
   });

@@ -1,36 +1,26 @@
-import db from './db';
+import { db } from './db';
 
-export const addCalculation = (
-  dose,
-  fractions,
-  alphaBeta,
-  bed,
-  eqd2
-) => {
-  const date = new Date().toISOString();
-
+export const insertCalculation = ({ dose, fractions, alphaBeta, bed, eqd2, date }) => {
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       tx.executeSql(
-        `INSERT INTO calculations 
-         (dose, fractions, alpha_beta, bed, eqd2, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        'INSERT INTO calculations (dose, fractions, alphaBeta, bed, eqd2, date) VALUES (?, ?, ?, ?, ?, ?)',
         [dose, fractions, alphaBeta, bed, eqd2, date],
         (_, result) => resolve(result),
-        (_, error) => reject(error)
+        (_, err) => reject(err)
       );
     });
   });
 };
 
-export const getCalculations = () => {
+export const getAllCalculations = () => {
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       tx.executeSql(
-        'SELECT * FROM calculations ORDER BY created_at DESC',
+        'SELECT * FROM calculations ORDER BY date DESC',
         [],
-        (_, result) => resolve(result.rows._array),
-        (_, error) => reject(error)
+        (_, { rows }) => resolve(rows._array),
+        (_, err) => reject(err)
       );
     });
   });

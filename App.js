@@ -5,7 +5,7 @@ import { initDB } from './database/db';
 
 export default function App() {
   useEffect(() => {
-    initDB();
+    initDB(); // Инициализация базы при старте
   }, []);
 
   return (
