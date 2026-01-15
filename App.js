@@ -1,22 +1,16 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import HomeScreen from './screens/HomeScreen';
-import CalculatorScreen from './screens/CalculatorScreen';
-import NLPInputScreen from './screens/NLPInputScreen';
-import HistoryScreen from './screens/HistoryScreen';
-
-const Stack = createNativeStackNavigator();
+import BottomTabs from './navigation/BottomTabs';
+import { initDB } from './database/db';
 
 export default function App() {
+  useEffect(() => {
+    initDB();
+  }, []);
+
   return (
     <NavigationContainer>
-      <Stack.Navigator initialRouteName="Home">
-        <Stack.Screen name="Home" component={HomeScreen} />
-        <Stack.Screen name="Calculator" component={CalculatorScreen} />
-        <Stack.Screen name="NLPInput" component={NLPInputScreen} />
-        <Stack.Screen name="History" component={HistoryScreen} />
-      </Stack.Navigator>
+      <BottomTabs />
     </NavigationContainer>
   );
 }
