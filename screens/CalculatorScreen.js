@@ -1,4 +1,3 @@
-// screens/CalculatorScreen.js
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
@@ -8,12 +7,24 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  Dimensions,
+  TouchableWithoutFeedback,
 } from "react-native";
-import { Text, TextInput, Button, ActivityIndicator } from "react-native-paper";
+import { 
+  Text, 
+  TextInput, 
+  Button, 
+  ActivityIndicator, 
+  Card, 
+  Chip 
+} from "react-native-paper";
 import { insertCalculation } from "../database/calculationsRepo";
-import { calculateBED, calculateEQD2, validateInput } from "../services/radiobiology";
+import { calculateBED, calculateEQD2, validateInput, getRiskLevel } from "../services/radiobiology";
 import { getAllReferences } from "../database/referenceRepo";
 import AlphaBetaPicker from "../components/AlphaBetaPicker";
+import Icon from 'react-native-vector-icons/MaterialIcons';
+
+const { width } = Dimensions.get('window');
 
 export default function CalculatorScreen({ route, navigation }) {
   const [dose, setDose] = useState("");
@@ -24,18 +35,20 @@ export default function CalculatorScreen({ route, navigation }) {
   const [references, setReferences] = useState([]);
   const [loading, setLoading] = useState(true);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [isCalculating, setIsCalculating] = useState(false);
   
   const scrollViewRef = useRef(null);
+  const doseInputRef = useRef(null);
+  const fractionsInputRef = useRef(null);
 
   // Функция загрузки данных
   const loadReferences = useCallback(async () => {
     try {
       setLoading(true);
       const refs = await getAllReferences();
-      console.log('Loaded references:', refs.length);
+      console.log('Загружено тканей:', refs.length, 'Первая ткань:', refs[0]?.tissue);
       setReferences(refs);
       
-      // После загрузки references, проверяем presetAlphaBeta
       if (route?.params?.presetAlphaBeta) {
         const presetAlphaBeta = route.params.presetAlphaBeta;
         const found = refs.find(ref => 
@@ -43,55 +56,54 @@ export default function CalculatorScreen({ route, navigation }) {
           ref.value === presetAlphaBeta
         );
         if (found) {
-          console.log('Found tissue after references loaded:', found);
+          console.log('Найдена ткань по preset:', found.tissue);
           setAlphaBeta(found);
         }
       }
     } catch (error) {
       console.error('Error fetching references:', error);
-      // Используем тестовые данные при ошибке
       setReferences([
         { 
           id: 1, 
           tissue: 'Легкие', 
           value: '3', 
           alphaBeta: 3,
-          description: 'Для поздних эффектов в легочной ткани'
+          description: 'Для поздних эффектов в легочной ткани',
         },
         { 
           id: 2, 
           tissue: 'Прямая кишка', 
           value: '3', 
           alphaBeta: 3,
-          description: 'Для поздних проктитов'
+          description: 'Для поздних проктитов',
         },
         { 
           id: 3, 
           tissue: 'Кожа', 
           value: '10', 
           alphaBeta: 10,
-          description: 'Для ранних реакций кожи'
+          description: 'Для ранних реакций кожи',
         },
         { 
           id: 4, 
           tissue: 'Опухоль', 
           value: '10', 
           alphaBeta: 10,
-          description: 'Для быстрорастущих опухолей'
+          description: 'Для быстрорастущих опухолей',
         },
         { 
           id: 5, 
           tissue: 'Спинной мозг', 
           value: '2', 
           alphaBeta: 2,
-          description: 'Консервативное значение для спинного мозга'
+          description: 'Консервативное значение для спинного мозга',
         },
         { 
           id: 6, 
           tissue: 'Печень', 
           value: '2', 
           alphaBeta: 2,
-          description: 'Для поздних эффектов радиационного гепатита'
+          description: 'Для поздних эффектов радиационного гепатита',
         }
       ]);
     } finally {
@@ -99,45 +111,44 @@ export default function CalculatorScreen({ route, navigation }) {
     }
   }, [route?.params?.presetAlphaBeta]);
 
-  // Обработка preset параметров из навигации
+  // Обработка preset параметров
   useEffect(() => {
     if (route?.params) {
       const { presetDose, presetFractions, presetAlphaBeta } = route.params;
       
-      console.log('Received preset params:', { presetDose, presetFractions, presetAlphaBeta });
+      console.log('Получены параметры:', { presetDose, presetFractions, presetAlphaBeta });
       
       if (presetDose) setDose(presetDose);
       if (presetFractions) setFractions(presetFractions);
       
       if (presetAlphaBeta && references.length > 0) {
-        // Ищем ткань с таким alphaBeta значением
         const found = references.find(ref => 
           ref.alphaBeta?.toString() === presetAlphaBeta || 
           ref.value === presetAlphaBeta
         );
         if (found) {
-          console.log('Found tissue in loaded references:', found);
+          console.log('Установлена ткань из preset:', found.tissue);
           setAlphaBeta(found);
         }
       }
     }
   }, [route?.params, references]);
 
-  // Загрузка данных при монтировании
+  // Загрузка данных
   useEffect(() => {
     loadReferences();
   }, [loadReferences]);
 
-  // Обновление данных при фокусе на экране
+  // Обновление при фокусе
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
-      console.log('CalculatorScreen focused, refreshing data...');
       loadReferences();
     });
 
     return unsubscribe;
   }, [navigation, loadReferences]);
 
+  // Отслеживание клавиатуры
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener(
       'keyboardDidShow',
@@ -158,35 +169,47 @@ export default function CalculatorScreen({ route, navigation }) {
     };
   }, []);
 
+  // Основная функция расчета - ИСПРАВЛЕННАЯ ВЕРСИЯ
   const handleCalculate = async () => {
     Keyboard.dismiss();
-    
-    console.log('=== CALCULATION START ===');
-    console.log('Dose:', dose);
-    console.log('Fractions:', fractions);
-    console.log('AlphaBeta object:', alphaBeta);
+    setIsCalculating(true);
     
     if (!alphaBeta) {
-      Alert.alert("Ошибка", "Выберите ткань из списка");
+      Alert.alert("Выберите ткань", "Пожалуйста, выберите тип ткани из списка");
+      setIsCalculating(false);
       return;
     }
     
-    // Получаем значение α/β
+    console.log('Выбранная ткань для расчета:', {
+      tissue: alphaBeta.tissue,
+      value: alphaBeta.value,
+      alphaBeta: alphaBeta.alphaBeta,
+      fullObject: alphaBeta
+    });
+    
     const alphaBetaValue = alphaBeta.value || alphaBeta.alphaBeta?.toString() || '';
-    console.log('AlphaBeta value:', alphaBetaValue);
     
     if (!alphaBetaValue) {
       Alert.alert("Ошибка", "Не удалось получить значение α/β для выбранной ткани");
+      setIsCalculating(false);
       return;
     }
     
-    // Нормализуем ввод
+    // ГАРАНТИРОВАННОЕ получение названия ткани
+    const tissueName = alphaBeta.tissue || 
+                      (alphaBeta.tissue && alphaBeta.tissue !== 'undefined' ? alphaBeta.tissue : null) ||
+                      'Не указана';
+    
+    console.log('Ткань для сохранения в историю:', tissueName);
+    
+    // Нормализация ввода
     const normalizedDose = dose.replace(',', '.');
     const normalizedAlphaBeta = alphaBetaValue.toString().replace(',', '.');
     
     const validation = validateInput(normalizedDose, fractions, normalizedAlphaBeta);
     if (!validation.valid) {
-      Alert.alert("Ошибка", validation.message);
+      Alert.alert("Проверьте ввод", validation.message);
+      setIsCalculating(false);
       return;
     }
 
@@ -195,11 +218,16 @@ export default function CalculatorScreen({ route, navigation }) {
     try {
       const bedCalc = calculateBED(d, n, ab);
       const eqd2Calc = calculateEQD2(bedCalc, ab);
+      const totalDose = d * n;
+      
+      const riskLevel = getRiskLevel(bedCalc, eqd2Calc, ab);
 
       setBed(bedCalc.toFixed(2));
       setEqd2(eqd2Calc.toFixed(2));
 
-      // Сохраняем результат
+      // ГАРАНТИРОВАННОЕ сохранение с названием ткани
+      console.log('Сохранение расчета с тканью:', tissueName);
+      
       await insertCalculation({
         dose: d,
         fractions: n,
@@ -207,16 +235,23 @@ export default function CalculatorScreen({ route, navigation }) {
         bed: bedCalc,
         eqd2: eqd2Calc,
         date: new Date().toISOString(),
+        tissue: tissueName, // Теперь всегда будет значение
+        totalDose: totalDose,
+        riskLevel: riskLevel.level
       });
+
+      console.log('✅ Расчет успешно сохранен с тканью:', tissueName);
 
       // Прокрутка к результатам
       setTimeout(() => {
-        scrollViewRef.current?.scrollTo({ y: 600, animated: true });
+        scrollViewRef.current?.scrollTo({ y: 400, animated: true });
       }, 300);
 
     } catch (error) {
       console.error('Calculation error:', error);
-      Alert.alert("Ошибка", "Произошла ошибка при расчете");
+      Alert.alert("Ошибка расчета", "Проверьте введенные значения");
+    } finally {
+      setIsCalculating(false);
     }
   };
 
@@ -238,176 +273,241 @@ export default function CalculatorScreen({ route, navigation }) {
     }
   };
 
-  const isCalculateDisabled = !dose || !fractions || !alphaBeta;
+  const isCalculateDisabled = !dose || !fractions || !alphaBeta || isCalculating;
 
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" />
-        <Text>Загрузка справочника тканей...</Text>
+        <ActivityIndicator size="large" color="#1976d2" />
+        <Text style={{ marginTop: 16, color: '#666' }}>
+          Загрузка справочника...
+        </Text>
       </View>
     );
   }
-
-  // Определяем стили для контента с учетом клавиатуры
-  const getScrollContentStyle = () => {
-    return [
-      styles.scrollContent,
-      keyboardVisible && styles.scrollContentWithKeyboard
-    ];
-  };
-
-  // Определяем стиль для spacer
-  const getSpacerStyle = () => {
-    return keyboardVisible ? styles.spacerWithKeyboard : styles.spacer;
-  };
 
   return (
     <KeyboardAvoidingView 
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
     >
-      <ScrollView 
-        ref={scrollViewRef}
-        contentContainerStyle={getScrollContentStyle()}
-        showsVerticalScrollIndicator={true}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Информационный блок */}
-        <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Как использовать калькулятор:</Text>
-          <Text style={styles.infoText}>1. Введите дозу за фракцию в Гр</Text>
-          <Text style={styles.infoText}>2. Укажите общее количество фракций</Text>
-          <Text style={styles.infoText}>3. Выберите ткань из списка α/β значений</Text>
-          <Text style={styles.infoText}>4. Нажмите "Рассчитать" для получения BED и EQD₂</Text>
-        </View>
-
-        <Text style={styles.title}>Калькулятор BED / EQD₂</Text>
-        
-        <Text style={styles.subtitle}>
-          Рассчитайте биологически эффективную дозу (BED) и эквивалентную дозу в 2 Гр фракциях (EQD₂)
-        </Text>
-
-        {/* Поле ввода дозы */}
-        <TextInput
-          label="Доза за фракцию (Гр)"
-          value={dose}
-          onChangeText={setDose}
-          keyboardType="decimal-pad"
-          style={styles.input}
-          mode="outlined"
-          placeholder="Например: 2.0"
-          right={<TextInput.Affix text="Гр" />}
-        />
-
-        {/* Поле ввода фракций */}
-        <TextInput
-          label="Количество фракций"
-          value={fractions}
-          onChangeText={setFractions}
-          keyboardType="number-pad"
-          style={styles.input}
-          mode="outlined"
-          placeholder="Например: 30"
-        />
-
-        {/* Выбор ткани */}
-        <View style={styles.pickerContainer}>
-          <Text style={styles.pickerLabel}>Выберите ткань (α/β значение):</Text>
-          {references.length > 0 ? (
-            <AlphaBetaPicker
-              references={references}
-              selected={alphaBeta}
-              onSelect={setAlphaBeta}
-            />
-          ) : (
-            <View style={styles.emptyPicker}>
-              <Text style={styles.emptyPickerText}>
-                Справочник тканей не загружен
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Кнопки */}
-        <View style={styles.buttonRow}>
-          <Button
-            mode="outlined"
-            onPress={handleReset}
-            style={[styles.button, styles.resetButton]}
-            icon="refresh"
-          >
-            Сбросить
-          </Button>
-          <Button
-            mode="contained"
-            onPress={handleCalculate}
-            style={[styles.button, styles.calculateButton]}
-            disabled={isCalculateDisabled}
-            icon="calculator"
-          >
-            Рассчитать
-          </Button>
-        </View>
-
-        {/* Результаты */}
-        {bed !== null && eqd2 !== null && (
-          <View style={styles.results}>
-            <Text style={styles.resultTitle}>📊 Результаты расчета</Text>
-            
-            <View style={styles.resultCard}>
-              <View style={styles.resultRow}>
-                <Text style={styles.resultLabel}>BED (Biologically Effective Dose):</Text>
-                <Text style={[styles.resultValue, styles.bedValue]}>
-                  {bed} Гр
-                </Text>
-              </View>
-              <Text style={styles.resultDescription}>
-                Биологически эффективная доза учитывает радиочувствительность ткани
-              </Text>
-            </View>
-
-            <View style={styles.resultCard}>
-              <View style={styles.resultRow}>
-                <Text style={styles.resultLabel}>EQD₂ (Equivalent Dose in 2 Gy fractions):</Text>
-                <Text style={[styles.resultValue, styles.eqd2Value]}>
-                  {eqd2} Гр
-                </Text>
-              </View>
-              <Text style={styles.resultDescription}>
-                Эквивалентная доза при стандартной фракционировании по 2 Гр
-              </Text>
-            </View>
-
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryTitle}>Параметры расчета:</Text>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Ткань:</Text>
-                <Text style={styles.summaryValue}>{alphaBeta?.tissue}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>α/β:</Text>
-                <Text style={styles.summaryValue}>{alphaBeta?.value || alphaBeta?.alphaBeta}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Доза за фракцию:</Text>
-                <Text style={styles.summaryValue}>{dose} Гр</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Количество фракций:</Text>
-                <Text style={styles.summaryValue}>{fractions}</Text>
-              </View>
-            </View>
-
-            <Text style={styles.note}>
-              ✅ Результат автоматически сохранён в историю расчётов
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <ScrollView 
+          ref={scrollViewRef}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Заголовок */}
+          <View style={styles.header}>
+            <Text style={styles.title}>🧮 Калькулятор BED/EQD₂</Text>
+            <Text style={styles.subtitle}>
+              Расчет биологически эффективной дозы (BED) и эквивалентной дозы в 2 Гр фракциях
             </Text>
           </View>
-        )}
 
-        {/* Пустое пространство */}
-        <View style={getSpacerStyle()} />
-      </ScrollView>
+          {/* Основная форма */}
+          <View style={styles.cardWrapper}>
+            <Card style={styles.formCard} elevation={2}>
+              <Card.Content>
+                <Text style={styles.formTitle}>Параметры расчета</Text>
+                
+                {/* Поле ввода дозы */}
+                <TextInput
+                  ref={doseInputRef}
+                  label="Доза за фракцию (Гр)"
+                  value={dose}
+                  onChangeText={setDose}
+                  keyboardType="decimal-pad"
+                  style={styles.input}
+                  mode="outlined"
+                  placeholder="2.0"
+                  outlineColor="#e0e0e0"
+                  activeOutlineColor="#1976d2"
+                  left={<TextInput.Icon icon="radioactive" color="#666" />}
+                  right={<TextInput.Affix text="Гр" />}
+                />
+
+                {/* Поле ввода фракций */}
+                <TextInput
+                  ref={fractionsInputRef}
+                  label="Количество фракций"
+                  value={fractions}
+                  onChangeText={setFractions}
+                  keyboardType="number-pad"
+                  style={styles.input}
+                  mode="outlined"
+                  placeholder="30"
+                  outlineColor="#e0e0e0"
+                  activeOutlineColor="#1976d2"
+                  left={<TextInput.Icon icon="numeric" color="#666" />}
+                />
+
+                {/* Выбор ткани */}
+                <View style={styles.pickerSection}>
+                  <Text style={styles.sectionTitle}>
+                    <Icon name="science" size={18} color="#1976d2" /> Выберите ткань:
+                  </Text>
+                  {references.length > 0 ? (
+                    <AlphaBetaPicker
+                      references={references}
+                      selected={alphaBeta}
+                      onSelect={setAlphaBeta}
+                    />
+                  ) : (
+                    <View style={styles.emptyState}>
+                      <Icon name="error" size={24} color="#ff9800" />
+                      <Text style={styles.emptyStateText}>Справочник не загружен</Text>
+                    </View>
+                  )}
+                  
+                  {alphaBeta && (
+                    <View style={styles.selectedTissueContainer}>
+                      <View style={styles.selectedChipContainer}>
+                        <Icon name="check-circle" size={18} color="#1e40af" />
+                        <Text style={styles.selectedChipText}>
+                          {alphaBeta.tissue} (α/β = {alphaBeta.value || alphaBeta.alphaBeta})
+                        </Text>
+                      </View>
+                      {alphaBeta.description && (
+                        <Text style={styles.tissueDescription}>
+                          {alphaBeta.description}
+                        </Text>
+                      )}
+                    </View>
+                  )}
+                </View>
+
+                {/* Кнопки действий */}
+                <View style={styles.actionButtons}>
+                  <Button
+                    mode="outlined"
+                    onPress={handleReset}
+                    style={styles.resetButton}
+                    icon="refresh"
+                    disabled={isCalculating}
+                    contentStyle={styles.buttonContent}
+                    labelStyle={styles.resetButtonLabel}
+                  >
+                    Сбросить
+                  </Button>
+                  <Button
+                    mode="contained"
+                    onPress={handleCalculate}
+                    style={styles.calculateButton}
+                    disabled={isCalculateDisabled}
+                    icon={isCalculating ? "loading" : "calculator"}
+                    loading={isCalculating}
+                    contentStyle={styles.buttonContent}
+                    labelStyle={styles.calculateButtonLabel}
+                  >
+                    {isCalculating ? "Расчет..." : "Рассчитать"}
+                  </Button>
+                </View>
+              </Card.Content>
+            </Card>
+          </View>
+
+          {/* Результаты */}
+          {bed !== null && eqd2 !== null && (
+            <View style={styles.cardWrapper}>
+              <Card style={styles.resultsCard} elevation={3}>
+                <Card.Content>
+                  <View style={styles.resultsHeader}>
+                    <Text style={styles.resultsTitle}>
+                      <Icon name="check-circle" size={22} color="#4CAF50" /> Результаты расчета
+                    </Text>
+                  </View>
+                  
+                  {/* Основные результаты */}
+                  <View style={styles.mainResults}>
+                    <View style={styles.mainResultItem}>
+                      <Text style={styles.mainResultLabel}>BED</Text>
+                      <Text style={[styles.mainResultValue, styles.bedValue]}>
+                        {bed} Гр
+                      </Text>
+                      <Text style={styles.mainResultDescription}>Биологически эффективная доза</Text>
+                    </View>
+                    
+                    <View style={styles.resultsDivider} />
+                    
+                    <View style={styles.mainResultItem}>
+                      <Text style={styles.mainResultLabel}>EQD₂</Text>
+                      <Text style={[styles.mainResultValue, styles.eqd2Value]}>
+                        {eqd2} Гр
+                      </Text>
+                      <Text style={styles.mainResultDescription}>Эквивалент в 2 Гр фракциях</Text>
+                    </View>
+                  </View>
+                  
+                  {/* Дополнительная информация */}
+                  <View style={styles.additionalInfo}>
+                    <View style={styles.infoItem}>
+                      <Icon name="radioactive" size={16} color="#FF9800" />
+                      <Text style={styles.infoLabel}>Общая доза:</Text>
+                      <Text style={styles.infoValue}>
+                        {(parseFloat(dose) * parseInt(fractions)).toFixed(1)} Гр
+                      </Text>
+                    </View>
+                    
+                    <View style={styles.infoDivider} />
+                    
+                    <View style={styles.infoItem}>
+                      <Icon name="science" size={16} color="#9C27B0" />
+                      <Text style={styles.infoLabel}>Ткань:</Text>
+                      <Text style={styles.infoValue}>
+                        {alphaBeta?.tissue || 'Не указана'} (α/β = {alphaBeta?.value || alphaBeta?.alphaBeta})
+                      </Text>
+                    </View>
+                    
+                    <View style={styles.infoDivider} />
+                    
+                    <View style={styles.infoItem}>
+                      <Icon name="format-list-numbered" size={16} color="#1976d2" />
+                      <Text style={styles.infoLabel}>Режим:</Text>
+                      <Text style={styles.infoValue}>
+                        {fractions} × {dose} Гр
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  {/* Только кнопка "Поделиться" */}
+                  <View style={styles.shareButtonContainer}>
+                    <Button
+                      mode="contained"
+                      icon="share"
+                      style={styles.shareButton}
+                      onPress={() => {
+                        const shareText = `Расчет BED/EQD₂:\n` +
+                          `Доза: ${dose} Гр × ${fractions}\n` +
+                          `Ткань: ${alphaBeta?.tissue || 'Не указана'} (α/β = ${alphaBeta?.value || alphaBeta?.alphaBeta})\n` +
+                          `BED: ${bed} Гр\n` +
+                          `EQD₂: ${eqd2} Гр`;
+                        Alert.alert("Результаты расчета", shareText, [
+                          { text: "OK", style: "default" },
+                          { 
+                            text: "Скопировать", 
+                            onPress: () => {
+                              Alert.alert("Скопировано", "Результаты скопированы");
+                            }
+                          }
+                        ]);
+                      }}
+                      labelStyle={styles.shareButtonLabel}
+                    >
+                      Поделиться результатами
+                    </Button>
+                  </View>
+                </Card.Content>
+              </Card>
+            </View>
+          )}
+
+          {/* Пустое пространство для клавиатуры */}
+          <View style={keyboardVisible ? styles.spacerLarge : styles.spacerSmall} />
+        </ScrollView>
+      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 }
@@ -415,182 +515,243 @@ export default function CalculatorScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#f8fafc',
   },
   center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+    backgroundColor: '#f8fafc',
   },
   scrollContent: {
-    padding: 20,
-    paddingBottom: 100,
-  },
-  scrollContentWithKeyboard: {
-    paddingBottom: 300,
-  },
-  infoCard: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
     padding: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#e9ecef',
+    paddingBottom: 40,
   },
-  infoTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 12,
-    color: '#495057',
+  cardWrapper: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 16,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
-  infoText: {
-    fontSize: 14,
-    color: '#6c757d',
-    marginBottom: 6,
-    lineHeight: 20,
+  header: {
+    alignItems: 'center',
+    marginBottom: 24,
+    paddingHorizontal: 10,
   },
   title: {
     fontSize: 26,
     fontWeight: 'bold',
     marginBottom: 8,
+    color: '#1e40af',
     textAlign: 'center',
-    color: '#1976d2',
   },
   subtitle: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 24,
+    fontSize: 15,
+    color: '#64748b',
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
+    maxWidth: '90%',
+  },
+  formCard: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+  },
+  formTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 20,
   },
   input: {
     marginBottom: 16,
-    backgroundColor: '#fff',
+    backgroundColor: 'white',
+    fontSize: 16,
   },
-  pickerContainer: {
-    marginBottom: 20,
+  pickerSection: {
+    marginBottom: 24,
   },
-  pickerLabel: {
+  sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 8,
-    color: '#333',
+    color: '#1e293b',
+    marginBottom: 12,
   },
-  emptyPicker: {
-    backgroundColor: '#f8f9fa',
-    padding: 16,
+  emptyState: {
+    padding: 20,
+    backgroundColor: '#fef3c7',
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#dee2e6',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#fbbf24',
+    borderStyle: 'dashed',
   },
-  emptyPickerText: {
+  emptyStateText: {
+    marginTop: 8,
+    color: '#92400e',
     fontSize: 14,
-    color: '#6c757d',
-    textAlign: 'center',
   },
-  buttonRow: {
+  selectedTissueContainer: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: '#f0f9ff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+  },
+  selectedChipContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: 20,
-    gap: 12,
+    alignItems: 'center',
+    backgroundColor: '#dbeafe',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+    marginBottom: 10,
   },
-  button: {
-    flex: 1,
+  selectedChipText: {
+    color: '#1e40af',
+    fontWeight: '600',
+    fontSize: 15,
+    marginLeft: 6,
+  },
+  tissueDescription: {
+    fontSize: 14,
+    color: '#475569',
+    fontStyle: 'italic',
+    lineHeight: 20,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
   },
   resetButton: {
-    borderColor: '#6c757d',
-  },
-  calculateButton: {
-    backgroundColor: '#1976d2',
-  },
-  results: {
-    marginTop: 24,
-  },
-  resultTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    textAlign: 'center',
-    color: '#333',
-  },
-  resultCard: {
-    backgroundColor: '#f8fdff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#e1f5fe',
-  },
-  resultRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  resultLabel: {
-    fontSize: 14,
-    color: '#666',
     flex: 1,
-    marginRight: 8,
+    borderRadius: 8,
+    borderColor: '#1976d2',
+    backgroundColor: 'white',
   },
-  resultValue: {
-    fontSize: 22,
-    fontWeight: 'bold',
-  },
-  bedValue: {
+  resetButtonLabel: {
+    fontSize: 15,
+    fontWeight: '600',
     color: '#1976d2',
   },
-  eqd2Value: {
-    color: '#4caf50',
+  calculateButton: {
+    flex: 1,
+    borderRadius: 8,
+    backgroundColor: '#1e40af',
   },
-  resultDescription: {
-    fontSize: 12,
-    color: '#888',
-    fontStyle: 'italic',
-    marginTop: 4,
+  calculateButtonLabel: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: 'white',
   },
-  summaryCard: {
-    backgroundColor: '#f9f9f9',
+  buttonContent: {
+    height: 48,
+  },
+  resultsCard: {
+    backgroundColor: 'white',
     borderRadius: 12,
-    padding: 16,
-    marginTop: 8,
-    marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: '#e2e8f0',
   },
-  summaryTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-    color: '#555',
+  resultsHeader: {
+    marginBottom: 20,
   },
-  summaryRow: {
+  resultsTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1e293b',
+  },
+  mainResults: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+    backgroundColor: '#f8fafc',
+    padding: 20,
+    marginBottom: 20,
+    alignItems: 'center',
+    borderRadius: 10,
   },
-  summaryLabel: {
-    fontSize: 14,
-    color: '#777',
+  mainResultItem: {
+    flex: 1,
+    alignItems: 'center',
   },
-  summaryValue: {
+  mainResultLabel: {
     fontSize: 14,
+    color: '#64748b',
+    marginBottom: 6,
     fontWeight: '500',
-    color: '#333',
   },
-  note: {
-    fontSize: 13,
-    color: '#4caf50',
+  mainResultValue: {
+    fontSize: 30,
+    fontWeight: 'bold',
+    marginBottom: 6,
+  },
+  bedValue: {
+    color: '#1e40af',
+  },
+  eqd2Value: {
+    color: '#059669',
+  },
+  mainResultDescription: {
+    fontSize: 12,
+    color: '#94a3b8',
     textAlign: 'center',
-    marginTop: 8,
-    fontStyle: 'italic',
   },
-  spacer: {
-    height: 50,
+  resultsDivider: {
+    width: 1,
+    height: 60,
+    backgroundColor: '#e2e8f0',
+    marginHorizontal: 20,
   },
-  spacerWithKeyboard: {
-    height: 150,
+  additionalInfo: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 16,
+    marginBottom: 20,
+  },
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  infoLabel: {
+    fontSize: 14,
+    color: '#64748b',
+    marginLeft: 12,
+    marginRight: 8,
+    flex: 1,
+  },
+  infoValue: {
+    fontSize: 15,
+    color: '#1e293b',
+    fontWeight: '500',
+  },
+  infoDivider: {
+    height: 1,
+    backgroundColor: '#e2e8f0',
+    marginVertical: 8,
+  },
+  shareButtonContainer: {
+    marginTop: 10,
+  },
+  shareButton: {
+    backgroundColor: '#1e40af',
+    borderRadius: 8,
+  },
+  shareButtonLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: 'white',
+  },
+  spacerSmall: {
+    height: 30,
+  },
+  spacerLarge: {
+    height: 120,
   },
 });

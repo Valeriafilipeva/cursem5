@@ -88,6 +88,40 @@ export const clearAllCalculations = async () => {
   }
 };
 
+  // Добавьте в существующий файл database/calculationsRepo.js
+export const getCalculationsStats = async () => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    
+    const totalResult = await dbHelpers.getFirstAsync(
+      'SELECT COUNT(*) as total FROM calculations'
+    );
+    
+    const todayResult = await dbHelpers.getFirstAsync(
+      'SELECT COUNT(*) as today FROM calculations WHERE date LIKE ?',
+      [`${today}%`]
+    );
+    
+    const recentResult = await dbHelpers.getAllAsync(
+      'SELECT * FROM calculations ORDER BY date DESC LIMIT 5'
+    );
+    
+    return {
+      total: totalResult?.total || 0,
+      today: todayResult?.today || 0,
+      recent: recentResult || []
+    };
+    
+  } catch (error) {
+    console.error('Error getting calculations stats:', error);
+    return {
+      total: 0,
+      today: 0,
+      recent: []
+    };
+  }
+};
+
 export const getCalculationsCount = async () => {
   try {
     const result = await dbHelpers.getFirstAsync(

@@ -206,6 +206,73 @@ export const checkDoseSafety = (dosePerFraction, alphaBeta) => {
   return { safe: true, warning: '', recommendation: '' };
 };
 
+  // Добавьте в существующий файл services/radiobiology.js
+export const getRiskLevel = (bed, eqd2, alphaBeta, category = 'normal') => {
+  if (!bed || !eqd2 || !alphaBeta) {
+    return {
+      level: 'Не определен',
+      description: 'Недостаточно данных для оценки риска',
+      recommendation: 'Проведите расчет для оценки риска'
+    };
+  }
+
+  if (category === 'tumor') {
+    // Для опухолей
+    if (bed > 100) {
+      return {
+        level: 'Очень высокий',
+        description: 'Высокая вероятность локального контроля опухоли',
+        recommendation: 'Оптимальный уровень для радикального лечения'
+      };
+    } else if (bed > 80) {
+      return {
+        level: 'Высокий',
+        description: 'Хороший локальный контроль опухоли',
+        recommendation: 'Стандартный уровень для радикального лечения'
+      };
+    } else if (bed > 60) {
+      return {
+        level: 'Умеренный',
+        description: 'Умеренный локальный контроль',
+        recommendation: 'Рассмотреть усиление лечения'
+      };
+    } else {
+      return {
+        level: 'Низкий',
+        description: 'Недостаточный уровень для радикального лечения',
+        recommendation: 'Рассмотреть изменение режима фракционирования'
+      };
+    }
+  } else {
+    // Для нормальных тканей
+    if (eqd2 > 70) {
+      return {
+        level: 'Очень высокий',
+        description: 'Высокий риск серьезных осложнений',
+        recommendation: 'Требуется коррекция плана лечения'
+      };
+    } else if (eqd2 > 60) {
+      return {
+        level: 'Высокий',
+        description: 'Повышенный риск осложнений',
+        recommendation: 'Тщательный мониторинг пациента'
+      };
+    } else if (eqd2 > 50) {
+      return {
+        level: 'Умеренный',
+        description: 'Умеренный риск осложнений',
+        recommendation: 'Стандартное наблюдение'
+      };
+    } else {
+      return {
+        level: 'Низкий',
+        description: 'Приемлемый уровень риска',
+        recommendation: 'Стандартный протокол'
+      };
+    }
+  }
+};
+
 /**
  * Расчет нормализованной суммарной дозы (NTD)
  * Альтернативный метод оценки

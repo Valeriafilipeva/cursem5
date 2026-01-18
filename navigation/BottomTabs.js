@@ -1,9 +1,9 @@
-// navigation/BottomTabs.js
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MaterialIcons } from '@expo/vector-icons';
 import CalculatorScreen from '../screens/CalculatorScreen';
 import ReferenceScreen from '../screens/ReferenceScreen';
+import ArticleSearchScreen from '../screens/ArticleSearchScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 
 const Tab = createBottomTabNavigator();
@@ -29,7 +29,7 @@ export default function BottomTabs() {
       }}
     >
       <Tab.Screen 
-        name="Calculator"  // Изменено с "Калькулятор"
+        name="Calculator"
         component={CalculatorScreen}
         options={{
           tabBarLabel: 'Калькулятор',
@@ -39,8 +39,9 @@ export default function BottomTabs() {
           headerTitle: 'Калькулятор BED/EQD₂',
         }}
       />
+      
       <Tab.Screen 
-        name="Reference"  // Изменено с "Справочник"
+        name="Reference"
         component={ReferenceScreen}
         options={{
           tabBarLabel: 'Справочник',
@@ -50,8 +51,21 @@ export default function BottomTabs() {
           headerTitle: 'Справочник α/β тканей',
         }}
       />
+      
       <Tab.Screen 
-        name="History"  // Изменено с "История"
+        name="ArticleSearch"
+        component={ArticleSearchScreen}
+        options={{
+          tabBarLabel: 'Поиск',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialIcons name="search" size={size} color={color} />
+          ),
+          headerTitle: 'Поиск статей',
+        }}
+      />
+      
+      <Tab.Screen 
+        name="History"
         component={HistoryScreen}
         options={{
           tabBarLabel: 'История',
